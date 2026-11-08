@@ -1,0 +1,1086 @@
+Dựa trên Data Dictionary & Data Contract của Banking Data Platform, mình sẽ thiết kế cho bạn 20 bài tập SQL thực tế, chia thành 4 chủ đề, mỗi chủ đề 5 bài.
+
+Mình định hướng bài tập theo nhu cầu thực tế của một ngân hàng, không phải những bài tập SQL kiểu chỉ JOIN hai bảng để lấy dữ liệu.
+
+Các bài tập sẽ mô phỏng những yêu cầu mà BA, Data Analyst, BI Analyst và Data Engineer thường nhận được từ Business, Risk, Marketing, Digital Banking và Operations.
+
+# SQL PRACTICE – BANKING DATA PLATFORM
+
+# 20 bài tập
+
+# 05
+
+JOIN
+
+# 05
+
+AGGREGATION
+
+# 05
+
+SUBQUERIES & CTE
+
+# 05
+
+WINDOW FUNCTIONS
+
+Business domains
+
+- Customer 360 & Account Management
+- Transaction & Payment Analytics
+- Marketing & CRM Analytics
+- Digital Banking & Fraud Monitoring
+- Customer Behavior & Retention
+
+## Chuẩn bị dữ liệu và quy ước
+
+Sử dụng các bảng trong Data Dictionary của bạn:
+
+| Nhóm | Các bảng sử dụng |
+| --- | --- |
+| Core | `core_customers`, `core_accounts`, `core_branches`, `core_transactions`, `core_employees` |
+| CRM | `crm_campaigns`, `crm_contacts`, `crm_interactions` |
+| Internet Banking | `ib_users`, `ib_sessions`, `ib_transfers`, `ib_beneficiaries` |
+| Mobile Banking | `mb_devices`, `mb_sessions`, `mb_qr_payments`, `mb_push_notifications` |
+
+Giả định SQL:
+
+- Sử dụng PostgreSQL làm SQL dialect chính.
+- Các cột timestamp sử dụng kiểu `TIMESTAMP`.
+- Giao dịch thành công có `status = 'SUCCESS'` (cần điều chỉnh theo enum thực tế).
+- Các ví dụ Input dưới đây là dữ liệu giả lập để mô tả yêu cầu.
+- Mỗi bài đều có Input và Output mong đợi, không phải chỉ yêu cầu viết câu SQL.
+
+# 02 – JOINS
+
+Business data integrationMục tiêu: Biết kết hợp dữ liệu từ nhiều hệ thống để tạo báo cáo nghiệp vụ.
+
+## Bài 1. Customer 360 – Tổng hợp hồ sơ khách hàng
+
+Business: Customer Analytics Basic
+
+Bối cảnh Business
+
+Bộ phận Customer Experience muốn xây dựng báo cáo Customer 360 để biết mỗi khách hàng:
+
+- Thuộc phân khúc nào.
+- Đang sở hữu bao nhiêu tài khoản.
+- Có bao nhiêu tài khoản đang hoạt động.
+- Tổng số dư hiện tại là bao nhiêu.
+
+Yêu cầu SQL
+
+JOIN 3 bảng:
+
+- `core_customers`
+- `crm_contacts`
+- `core_accounts`
+
+Lấy danh sách khách hàng, bao gồm cả khách hàng chưa có tài khoản hoặc chưa có CRM contact.
+
+Input
+
+`core_customers`
+
+| customer\_id | full\_name |
+| --- | --- |
+| C001 | Nguyen Van A |
+| C002 | Tran Thi B |
+| C003 | Le Van C |
+
+`crm_contacts`
+
+| contact\_id | customer\_id | segment |
+| --- | --- | --- |
+| CT01 | C001 | VIP |
+| CT02 | C002 | MASS |
+
+`core_accounts`
+
+| account\_id | customer\_id | balance | status |
+| --- | --- | --- | --- |
+| A001 | C001 | 50,000,000 | ACTIVE |
+| A002 | C001 | 20,000,000 | ACTIVE |
+| A003 | C002 | 10,000,000 | CLOSED |
+
+Expected Output
+
+| customer\_id | full\_name | segment | total\_accounts | active\_accounts | total\_balance |
+| --- | --- | --- | --- | --- | --- |
+| C001 | Nguyen Van A | VIP | 2 | 2 | 70,000,000 |
+| C002 | Tran Thi B | MASS | 1 | 0 | 10,000,000 |
+| C003 | Le Van C | NULL | 0 | 0 | 0 |
+
+Business value: Xây dựng Customer 360, phục vụ phân khúc khách hàng và phân tích tài sản khách hàng.
+
+Điểm cần chú ý: Tránh nhân bản dữ liệu khi JOIN CRM contacts với accounts nếu một khách hàng có nhiều contact. Cần xác định grain và xử lý trước khi tổng hợp.
+
+## Bài 2. Branch Performance – Đánh giá hiệu quả chi nhánh
+
+Business: Branch Operations Basic
+
+Bối cảnh Business
+
+Ban điều hành muốn biết chi nhánh nào có hiệu quả hoạt động cao dựa trên:
+
+- Số lượng khách hàng.
+- Số lượng tài khoản.
+- Tổng số dư tài khoản.
+
+Yêu cầu SQL
+
+JOIN:
+
+- `core_branches`
+- `core_customers`
+- `core_accounts`
+
+Chỉ lấy tài khoản đang ACTIVE.
+
+Input
+
+`core_branches`
+
+| branch\_id | branch\_name |
+| --- | --- |
+| B01 | Ho Chi Minh |
+| B02 | Ha Noi |
+| B03 | Da Nang |
+
+`core_customers`
+
+| customer\_id | branch\_id |
+| --- | --- |
+| C01 | B01 |
+| C02 | B01 |
+| C03 | B02 |
+
+`core_accounts`
+
+| account\_id | customer\_id | balance | status |
+| --- | --- | --- | --- |
+| A01 | C01 | 100M | ACTIVE |
+| A02 | C01 | 50M | ACTIVE |
+| A03 | C02 | 80M | ACTIVE |
+| A04 | C03 | 30M | CLOSED |
+
+Expected Output
+
+| branch\_id | branch\_name | total\_customers | active\_accounts | total\_balance |
+| --- | --- | --- | --- | --- |
+| B01 | Ho Chi Minh | 2 | 3 | 230M |
+| B02 | Ha Noi | 1 | 0 | 0 |
+| B03 | Da Nang | 0 | 0 | 0 |
+
+Business value: Báo cáo Branch Performance, hỗ trợ phân bổ nguồn lực và đánh giá quy mô hoạt động chi nhánh.
+
+## Bài 3. Digital Banking Adoption – Khách hàng sử dụng ngân hàng số
+
+Business: Digital Transformation Intermediate
+
+Bối cảnh Business
+
+Ngân hàng muốn xác định khách hàng nào đã đăng ký Internet Banking và Mobile Banking.
+
+Mục tiêu là đo tỷ lệ khách hàng sử dụng dịch vụ ngân hàng số.
+
+Yêu cầu SQL
+
+JOIN:
+
+- `core_customers`
+- `ib_users`
+- `mb_devices`
+
+Trả về mỗi khách hàng một record, với:
+
+- Có đăng ký Internet Banking hay không.
+- Có thiết bị Mobile Banking hay không.
+- Số lượng thiết bị đã đăng ký.
+
+Input
+
+`core_customers`
+
+| customer\_id | full\_name |
+| --- | --- |
+| C001 | Nguyen A |
+| C002 | Tran B |
+| C003 | Le C |
+
+`ib_users`
+
+| ib\_user\_id | customer\_id | status |
+| --- | --- | --- |
+| U01 | C001 | ACTIVE |
+| U02 | C002 | ACTIVE |
+
+`mb_devices`
+
+| device\_id | customer\_id | status |
+| --- | --- | --- |
+| D01 | C001 | ACTIVE |
+| D02 | C001 | ACTIVE |
+| D03 | C003 | ACTIVE |
+
+Expected Output
+
+| customer\_id | full\_name | has\_ib | has\_mb | device\_count |
+| --- | --- | --- | --- | --- |
+| C001 | Nguyen A | YES | YES | 2 |
+| C002 | Tran B | YES | NO | 0 |
+| C003 | Le C | NO | YES | 1 |
+
+Business value: Đo lường Digital Banking Adoption, xác định nhóm khách hàng chưa sử dụng ngân hàng số để triển khai chiến dịch chuyển đổi.
+
+## Bài 4. Employee Performance – Hiệu quả chăm sóc khách hàng
+
+Business: CRM Operations Intermediate
+
+Bối cảnh Business
+
+CRM Manager muốn đánh giá hiệu suất nhân viên chăm sóc khách hàng.
+
+Các chỉ số cần xem:
+
+- Số lượng interaction mỗi nhân viên.
+- Tổng thời gian tương tác.
+- Điểm hài lòng trung bình.
+- Số lượng khách hàng đã chăm sóc.
+
+Yêu cầu SQL
+
+JOIN:
+
+- `core_employees`
+- `crm_interactions`
+- `crm_contacts`
+
+Chỉ tính các interaction có `outcome` hợp lệ theo danh mục nghiệp vụ.
+
+Input
+
+`core_employees`
+
+| employee\_id | full\_name |
+| --- | --- |
+| E01 | Nguyen An |
+| E02 | Tran Binh |
+
+`crm_contacts`
+
+| contact\_id | customer\_id |
+| --- | --- |
+| CT01 | C001 |
+| CT02 | C002 |
+| CT03 | C003 |
+
+`crm_interactions`
+
+| interaction\_id | contact\_id | agent\_id | duration\_seconds | satisfaction\_score |
+| --- | --- | --- | --- | --- |
+| I01 | CT01 | E01 | 300 | 5 |
+| I02 | CT02 | E01 | 600 | 4 |
+| I03 | CT03 | E02 | 900 | 3 |
+
+Expected Output
+
+| employee\_id | full\_name | total\_interactions | total\_duration | avg\_satisfaction | customers\_served |
+| --- | --- | --- | --- | --- | --- |
+| E01 | Nguyen An | 2 | 900 | 4.5 | 2 |
+| E02 | Tran Binh | 1 | 900 | 3.0 | 1 |
+
+Business value: Đánh giá hiệu suất đội ngũ Contact Center và chất lượng chăm sóc khách hàng.
+
+## Bài 5. Transaction Reconciliation – Đối soát giao dịch đa kênh
+
+Business: Finance & Operations Advanced
+
+Bối cảnh Business
+
+Bộ phận Operations muốn đối soát giao dịch chuyển tiền từ Internet Banking với giao dịch được ghi nhận trong Core Banking.
+
+Hiện tại:
+
+- `ib_transfers` lưu yêu cầu chuyển tiền.
+- `core_transactions` lưu giao dịch Core Banking.
+
+Giả định hai hệ thống dùng chung `reference_code`.
+
+Yêu cầu SQL
+
+JOIN:
+
+- `ib_transfers`
+- `core_transactions`
+- `ib_users`
+
+Phân loại:
+
+- `MATCHED`: Có giao dịch Core Banking và thành công.
+- `NOT_FOUND`: Không tìm thấy giao dịch Core Banking.
+- `STATUS_MISMATCH`: Có giao dịch nhưng trạng thái không khớp.
+- `AMOUNT_MISMATCH`: Số tiền không khớp.
+
+Input
+
+`ib_transfers`
+
+| transfer\_id | reference\_code | amount | status |
+| --- | --- | --- | --- |
+| T01 | REF01 | 1000000 | SUCCESS |
+| T02 | REF02 | 2000000 | SUCCESS |
+| T03 | REF03 | 3000000 | SUCCESS |
+
+`core_transactions`
+
+| transaction\_id | reference\_code | amount | status |
+| --- | --- | --- | --- |
+| TX01 | REF01 | 1000000 | SUCCESS |
+| TX02 | REF02 | 2000000 | FAILED |
+| TX03 | REF03 | 2500000 | SUCCESS |
+
+Expected Output
+
+| transfer\_id | reference\_code | ib\_amount | core\_amount | reconciliation\_status |
+| --- | --- | --- | --- | --- |
+| T01 | REF01 | 1000000 | 1000000 | MATCHED |
+| T02 | REF02 | 2000000 | 2000000 | STATUS\_MISMATCH |
+| T03 | REF03 | 3000000 | 2500000 | AMOUNT\_MISMATCH |
+
+Business value: Phát hiện sai lệch giữa hệ thống Digital Banking và Core Banking.
+
+Lưu ý: Bài tập giả định `reference_code` có thể đối chiếu duy nhất. Trong thực tế cần xác nhận tính duy nhất, quy tắc retry và trường hợp một request sinh nhiều bút toán.
+
+# 03 – AGGREGATION
+
+Business KPI & ReportingMục tiêu: Sử dụng `GROUP BY`, `HAVING`, `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` để tạo các chỉ số phục vụ quản trị.
+
+## Bài 6. Monthly Transaction Report – Báo cáo giao dịch theo tháng
+
+BasicBối cảnh Business
+
+Finance Department muốn theo dõi tổng giá trị giao dịch thành công mỗi tháng.
+
+Yêu cầu SQL
+
+Từ `core_transactions`:
+
+- Nhóm theo tháng.
+- Tính số giao dịch.
+- Tính tổng giá trị giao dịch.
+- Tính giá trị giao dịch trung bình.
+- Chỉ tính giao dịch SUCCESS.
+
+Input
+
+| transaction\_id | transaction\_date | amount | status |
+| --- | --- | --- | --- |
+| T01 | 2026-01-05 | 1M | SUCCESS |
+| T02 | 2026-01-10 | 2M | SUCCESS |
+| T03 | 2026-01-15 | 5M | FAILED |
+| T04 | 2026-02-05 | 3M | SUCCESS |
+| T05 | 2026-02-20 | 7M | SUCCESS |
+
+Expected Output
+
+| month | total\_transactions | total\_amount | avg\_amount |
+| --- | --- | --- | --- |
+| 2026-01 | 2 | 3M | 1.5M |
+| 2026-02 | 2 | 10M | 5M |
+
+Business value: Theo dõi transaction volume và transaction value theo thời gian.
+
+## Bài 7. Top Customer by Balance – Khách hàng có tổng tài sản lớn
+
+BasicBối cảnh Business
+
+Private Banking muốn xác định khách hàng có tổng số dư tài khoản cao để xây dựng nhóm khách hàng ưu tiên.
+
+Yêu cầu SQL
+
+Từ `core_customers` và `core_accounts`:
+
+- Tính tổng balance theo khách hàng.
+- Chỉ tính tài khoản ACTIVE.
+- Chỉ hiển thị khách hàng có tổng số dư trên 100 triệu VND.
+- Sắp xếp giảm dần theo tổng số dư.
+
+Input
+
+| customer\_id | account\_id | balance | status |
+| --- | --- | --- | --- |
+| C01 | A01 | 80M | ACTIVE |
+| C01 | A02 | 50M | ACTIVE |
+| C02 | A03 | 30M | ACTIVE |
+| C03 | A04 | 200M | CLOSED |
+| C03 | A05 | 150M | ACTIVE |
+
+Expected Output
+
+| customer\_id | total\_balance |
+| --- | --- |
+| C01 | 130M |
+| C03 | 150M |
+
+Business value: Xây dựng danh sách khách hàng có giá trị tài sản cao.
+
+Lưu ý: Khi triển khai thật cần nhóm theo currency hoặc quy đổi về đồng tiền báo cáo trước khi cộng số dư đa tiền tệ.
+
+## Bài 8. Branch Transaction Performance – Hiệu suất giao dịch theo chi nhánh
+
+IntermediateBối cảnh Business
+
+Ban điều hành muốn biết chi nhánh nào tạo ra nhiều giao dịch nhất và có tổng giá trị giao dịch cao nhất.
+
+Yêu cầu SQL
+
+JOIN `core_transactions`, `core_accounts`, `core_customers`, `core_branches`.
+
+Tính:
+
+- Số giao dịch thành công.
+- Tổng transaction amount.
+- Average transaction amount.
+
+Phân nhóm theo chi nhánh quản lý khách hàng sở hữu tài khoản nguồn.
+
+Input
+
+| branch\_id | transaction\_id | amount | status |
+| --- | --- | --- | --- |
+| B01 | T01 | 1M | SUCCESS |
+| B01 | T02 | 2M | SUCCESS |
+| B01 | T03 | 5M | FAILED |
+| B02 | T04 | 3M | SUCCESS |
+| B02 | T05 | 4M | SUCCESS |
+
+Expected Output
+
+| branch\_id | total\_transactions | total\_amount | avg\_amount |
+| --- | --- | --- | --- |
+| B01 | 2 | 3M | 1.5M |
+| B02 | 2 | 7M | 3.5M |
+
+Business value: Đo lường hiệu suất hoạt động và quy mô giao dịch theo chi nhánh.
+
+## Bài 9. Campaign Performance – Đánh giá hiệu quả chiến dịch Marketing
+
+Business: Marketing Analytics Intermediate
+
+Bối cảnh Business
+
+Marketing Manager cần xác định chiến dịch nào đang mang lại hiệu quả tốt.
+
+Yêu cầu SQL
+
+Từ `crm_campaigns`, lấy:
+
+- Tổng reach.
+- Tổng conversion.
+- Average conversion rate.
+- Tổng revenue.
+- Tổng budget.
+- ROI trung bình.
+
+Chỉ lấy campaign có `status = 'COMPLETED'`.
+
+Input
+
+| campaign\_id | total\_reach | total\_converted | budget\_vnd | revenue\_generated | status |
+| --- | --- | --- | --- | --- | --- |
+| C01 | 10000 | 500 | 10M | 30M | COMPLETED |
+| C02 | 20000 | 400 | 20M | 25M | COMPLETED |
+| C03 | 5000 | 300 | 5M | 10M | RUNNING |
+
+Expected Output
+
+| campaign\_id | conversion\_rate | budget | revenue | net\_return |
+| --- | --- | --- | --- | --- |
+| C01 | 5% | 10M | 30M | 20M |
+| C02 | 2% | 20M | 25M | 5M |
+
+Business value: Giúp Marketing phân bổ ngân sách cho những chiến dịch có khả năng chuyển đổi và tạo doanh thu tốt.
+
+Lưu ý: `net_return` trong bài là doanh thu trừ ngân sách, không đồng nghĩa với ROI chính thức nếu ngân hàng còn các loại chi phí khác.
+
+## Bài 10. Digital Banking Usage – Đo lường mức độ sử dụng Mobile Banking
+
+Business: Digital Product Intermediate
+
+Bối cảnh Business
+
+Product Owner muốn đánh giá mức độ sử dụng ứng dụng Mobile Banking theo từng ngày.
+
+Yêu cầu SQL
+
+Từ `mb_sessions`:
+
+- Số phiên đăng nhập mỗi ngày.
+- Số thiết bị hoạt động.
+- Tổng thời lượng sử dụng.
+- Thời lượng trung bình mỗi session.
+
+Input
+
+| session\_id | device\_id | session\_start | duration\_seconds |
+| --- | --- | --- | --- |
+| S01 | D01 | 2026-01-01 08:00 | 300 |
+| S02 | D01 | 2026-01-01 10:00 | 600 |
+| S03 | D02 | 2026-01-01 11:00 | 900 |
+| S04 | D02 | 2026-01-02 08:00 | 300 |
+
+Expected Output
+
+| session\_date | total\_sessions | active\_devices | total\_duration | avg\_duration |
+| --- | --- | --- | --- | --- |
+| 2026-01-01 | 3 | 2 | 1800 | 600 |
+| 2026-01-02 | 1 | 1 | 300 | 300 |
+
+Business value: Theo dõi Daily Active Devices, mức độ sử dụng và xu hướng tương tác của người dùng Mobile Banking.
+
+# 04 – SUBQUERIES & CTE
+
+Business logic & analytical queriesMục tiêu: Giải quyết các bài toán cần nhiều bước xử lý, truy vấn lồng nhau hoặc xây dựng tập dữ liệu trung gian.
+
+## Bài 11. Customers with Above-average Balance
+
+BasicBối cảnh Business
+
+Ngân hàng muốn tìm những khách hàng có tổng số dư cao hơn mức trung bình của toàn bộ khách hàng.
+
+Yêu cầu SQL
+
+Sử dụng Subquery:
+
+1. Tính tổng số dư tài khoản ACTIVE theo customer.
+2. Tính trung bình tổng số dư giữa các customer.
+3. Lấy khách hàng có tổng số dư lớn hơn mức trung bình.
+
+Input
+
+| customer\_id | total\_balance |
+| --- | --- |
+| C01 | 100M |
+| C02 | 200M |
+| C03 | 300M |
+| C04 | 400M |
+
+Average = 250M.
+
+Expected Output
+
+| customer\_id | total\_balance |
+| --- | --- |
+| C03 | 300M |
+| C04 | 400M |
+
+Business value: Xác định nhóm khách hàng có giá trị tài sản cao hơn mức trung bình để triển khai các chương trình chăm sóc phù hợp.
+
+## Bài 12. Customers Without Transactions – Khách hàng không phát sinh giao dịch
+
+Business: Customer Retention Basic
+
+Bối cảnh Business
+
+Ngân hàng muốn tìm khách hàng có tài khoản ACTIVE nhưng chưa từng thực hiện giao dịch thành công.
+
+Đây là nhóm khách hàng có thể cần kích hoạt sử dụng dịch vụ.
+
+Yêu cầu SQL
+
+Sử dụng `NOT EXISTS` hoặc `LEFT JOIN`.
+
+Điều kiện:
+
+- Customer có ít nhất một account ACTIVE.
+- Không tồn tại giao dịch thành công từ tài khoản đó.
+
+Input
+
+`core_accounts`
+
+| account\_id | customer\_id | status |
+| --- | --- | --- |
+| A01 | C01 | ACTIVE |
+| A02 | C02 | ACTIVE |
+| A03 | C03 | ACTIVE |
+
+`core_transactions`
+
+| transaction\_id | from\_account | status |
+| --- | --- | --- |
+| T01 | A01 | SUCCESS |
+| T02 | A02 | FAILED |
+
+Expected Output
+
+| customer\_id | account\_id | reason |
+| --- | --- | --- |
+| C02 | A02 | No successful transaction |
+| C03 | A03 | No successful transaction |
+
+Business value: Tạo danh sách khách hàng chưa kích hoạt hành vi giao dịch để phục vụ CRM và Customer Retention.
+
+## Bài 13. High-risk Customers – Khách hàng rủi ro cao có giao dịch lớn
+
+Business: Risk Analytics Intermediate
+
+Bối cảnh Business
+
+Risk Department muốn xác định khách hàng có mức rủi ro HIGH và có giao dịch với giá trị lớn.
+
+Yêu cầu SQL
+
+Sử dụng CTE:
+
+1. Lấy danh sách customer có `risk_level = 'HIGH'`.
+2. Tính tổng giá trị giao dịch SUCCESS trong tháng.
+3. Lọc khách hàng có tổng giao dịch lớn hơn 100 triệu VND.
+
+Input
+
+`core_customers`
+
+| customer\_id | risk\_level |
+| --- | --- |
+| C01 | HIGH |
+| C02 | LOW |
+| C03 | HIGH |
+
+`core_transactions`
+
+| transaction\_id | customer\_id | amount | status |
+| --- | --- | --- | --- |
+| T01 | C01 | 80M | SUCCESS |
+| T02 | C01 | 50M | SUCCESS |
+| T03 | C02 | 200M | SUCCESS |
+| T04 | C03 | 30M | SUCCESS |
+
+Để đơn giản, Input đã thể hiện customer\_id trong giao dịch; khi viết SQL thực tế cần JOIN qua core\_accounts.
+
+Expected Output
+
+| customer\_id | risk\_level | total\_transaction |
+| --- | --- | --- |
+| C01 | HIGH | 130M |
+
+Business value: Hỗ trợ Risk Monitoring, ưu tiên kiểm tra các trường hợp có rủi ro cao và hoạt động giao dịch lớn.
+
+Lưu ý: Đây là tiêu chí sàng lọc nghiệp vụ, không phải kết luận giao dịch gian lận.
+
+## Bài 14. Campaign Conversion Analysis – Phân tích khách hàng chuyển đổi từ Campaign
+
+Business: Marketing Analytics Advanced
+
+Bối cảnh Business
+
+Marketing muốn biết khách hàng được chăm sóc trong một chiến dịch có thực sự tạo ra giao dịch hay không.
+
+Hiện tại chưa có bảng campaign membership nên bài này giả định đã có bảng mapping bổ sung:
+
+`crm_campaign_members(campaign_id, customer_id)`.
+
+Yêu cầu SQL
+
+Sử dụng CTE:
+
+1. Lấy danh sách khách hàng tham gia từng campaign.
+2. Tính số khách hàng tham gia.
+3. Đếm khách hàng có ít nhất một giao dịch SUCCESS sau ngày bắt đầu chiến dịch.
+4. Tính conversion rate theo khách hàng.
+
+Input
+
+`crm_campaign_members`
+
+| campaign\_id | customer\_id |
+| --- | --- |
+| CAM01 | C01 |
+| CAM01 | C02 |
+| CAM01 | C03 |
+| CAM02 | C04 |
+| CAM02 | C05 |
+
+`core_transactions`
+
+| customer\_id | amount | status |
+| --- | --- | --- |
+| C01 | 10M | SUCCESS |
+| C03 | 20M | SUCCESS |
+| C04 | 15M | FAILED |
+| C05 | 30M | SUCCESS |
+
+Expected Output
+
+| campaign\_id | participants | converted\_customers | conversion\_rate |
+| --- | --- | --- | --- |
+| CAM01 | 3 | 2 | 66.67% |
+| CAM02 | 2 | 1 | 50.00% |
+
+Business value: Đánh giá hiệu quả thực tế của chiến dịch Marketing theo hành vi giao dịch, thay vì chỉ dựa trên lượt mở hoặc click.
+
+## Bài 15. Inactive Digital Banking Users – Người dùng ngân hàng số không hoạt động
+
+Business: Digital Retention Advanced
+
+Bối cảnh Business
+
+Digital Banking muốn tìm người dùng Internet Banking đã đăng ký nhưng không đăng nhập trong 30 ngày gần nhất.
+
+Yêu cầu SQL
+
+Sử dụng CTE:
+
+1. Lấy danh sách IB user ACTIVE.
+2. Xác định lần đăng nhập gần nhất từ `ib_sessions`.
+3. Lọc những user không có login trong 30 ngày gần nhất.
+4. Giữ cả những user chưa từng đăng nhập.
+
+Input
+
+`ib_users`
+
+| ib\_user\_id | customer\_id | status |
+| --- | --- | --- |
+| U01 | C01 | ACTIVE |
+| U02 | C02 | ACTIVE |
+| U03 | C03 | ACTIVE |
+
+`ib_sessions`
+
+| session\_id | ib\_user\_id | login\_at |
+| --- | --- | --- |
+| S01 | U01 | 2026-10-30 |
+| S02 | U02 | 2026-09-01 |
+
+Giả định ngày chạy báo cáo là `2026-11-01`.
+
+Expected Output
+
+| ib\_user\_id | customer\_id | last\_login\_at | inactivity\_status |
+| --- | --- | --- | --- |
+| U02 | C02 | 2026-09-01 | INACTIVE\_30\_DAYS |
+| U03 | C03 | NULL | NEVER\_LOGGED\_IN |
+
+Business value: Xây dựng chiến dịch tái kích hoạt khách hàng Digital Banking.
+
+# 05 – WINDOW FUNCTIONS
+
+Advanced AnalyticsMục tiêu: Sử dụng `ROW_NUMBER`, `RANK`, `DENSE_RANK`, `LAG`, `LEAD`, `SUM OVER`, `AVG OVER` để giải quyết các bài toán phân tích nâng cao.
+
+Đây là phần cực kỳ quan trọng nếu bạn muốn làm Data Analyst hoặc Analytics Engineer trong ngân hàng.
+
+## Bài 16. Top 3 Customers by Balance per Branch
+
+Business: Customer Segmentation Intermediate
+
+Bối cảnh Business
+
+Mỗi chi nhánh muốn xác định 3 khách hàng có tổng số dư cao nhất.
+
+Yêu cầu SQL
+
+Sử dụng:
+
+- `SUM()` để tính tổng balance theo customer.
+- `DENSE_RANK()` để xếp hạng khách hàng trong từng branch.
+
+Input
+
+| branch\_id | customer\_id | total\_balance |
+| --- | --- | --- |
+| B01 | C01 | 500M |
+| B01 | C02 | 300M |
+| B01 | C03 | 200M |
+| B01 | C04 | 100M |
+| B02 | C05 | 800M |
+| B02 | C06 | 600M |
+| B02 | C07 | 400M |
+
+Expected Output
+
+| branch\_id | customer\_id | total\_balance | ranking |
+| --- | --- | --- | --- |
+| B01 | C01 | 500M | 1 |
+| B01 | C02 | 300M | 2 |
+| B01 | C03 | 200M | 3 |
+| B02 | C05 | 800M | 1 |
+| B02 | C06 | 600M | 2 |
+| B02 | C07 | 400M | 3 |
+
+Business value: Hỗ trợ phân loại khách hàng VIP theo từng chi nhánh.
+
+## Bài 17. Latest Customer Interaction – Tương tác gần nhất của khách hàng
+
+Business: CRM Intermediate
+
+Bối cảnh Business
+
+CRM cần lấy tương tác gần nhất của mỗi khách hàng để biết nhân viên đã liên hệ với họ khi nào và qua kênh nào.
+
+Yêu cầu SQL
+
+Sử dụng:
+
+- `ROW_NUMBER()`
+- `PARTITION BY customer_id`
+- `ORDER BY created_at DESC`
+
+JOIN `crm_contacts` với `crm_interactions`.
+
+Input
+
+| contact\_id | customer\_id | interaction\_id | channel | created\_at |
+| --- | --- | --- | --- | --- |
+| CT01 | C01 | I01 | EMAIL | 2026-10-01 |
+| CT01 | C01 | I02 | PHONE | 2026-10-20 |
+| CT02 | C02 | I03 | SMS | 2026-10-15 |
+| CT03 | C03 | I04 | EMAIL | 2026-10-10 |
+| CT03 | C03 | I05 | APP | 2026-10-25 |
+
+Expected Output
+
+| customer\_id | interaction\_id | channel | latest\_interaction |
+| --- | --- | --- | --- |
+| C01 | I02 | PHONE | 2026-10-20 |
+| C02 | I03 | SMS | 2026-10-15 |
+| C03 | I05 | APP | 2026-10-25 |
+
+Business value: Xây dựng Customer 360 và tránh liên hệ khách hàng quá nhiều lần qua nhiều kênh.
+
+## Bài 18. Transaction Trend – So sánh giao dịch với tháng trước
+
+Business: Financial Analytics Advanced
+
+Bối cảnh Business
+
+Finance Manager muốn theo dõi sự thay đổi tổng giá trị giao dịch theo tháng.
+
+Yêu cầu SQL
+
+Sử dụng:
+
+- `SUM()` và `GROUP BY` để tính tổng giao dịch theo tháng.
+- `LAG()` để lấy doanh thu tháng trước.
+- Tính phần trăm tăng trưởng.
+
+Công thức:
+
+$$
+Growth\ Rate = \frac{Current - Previous}{Previous} \times 100
+$$
+
+Input
+
+| month | total\_amount |
+| --- | --- |
+| 2026-01 | 100M |
+| 2026-02 | 150M |
+| 2026-03 | 120M |
+| 2026-04 | 180M |
+
+Expected Output
+
+| month | current\_amount | previous\_amount | growth\_rate |
+| --- | --- | --- | --- |
+| 2026-01 | 100M | NULL | NULL |
+| 2026-02 | 150M | 100M | 50% |
+| 2026-03 | 120M | 150M | -20% |
+| 2026-04 | 180M | 120M | 50% |
+
+Business value: Theo dõi xu hướng giao dịch, hỗ trợ dự báo và lập kế hoạch kinh doanh.
+
+## Bài 19. Running Balance – Tổng lũy kế giao dịch của khách hàng
+
+Business: Customer Financial Behavior Advanced
+
+Bối cảnh Business
+
+Ngân hàng muốn theo dõi giá trị giao dịch lũy kế của từng khách hàng theo thời gian.
+
+Yêu cầu SQL
+
+Sử dụng:
+
+- `SUM() OVER()`
+- `PARTITION BY customer_id`
+- `ORDER BY transaction_date`
+
+Chỉ lấy giao dịch SUCCESS.
+
+Input
+
+| customer\_id | transaction\_id | transaction\_date | amount |
+| --- | --- | --- | --- |
+| C01 | T01 | 2026-01-01 | 10M |
+| C01 | T02 | 2026-01-05 | 20M |
+| C01 | T03 | 2026-01-10 | 15M |
+| C02 | T04 | 2026-01-02 | 30M |
+| C02 | T05 | 2026-01-08 | 10M |
+
+Expected Output
+
+| customer\_id | transaction\_id | amount | cumulative\_amount |
+| --- | --- | --- | --- |
+| C01 | T01 | 10M | 10M |
+| C01 | T02 | 20M | 30M |
+| C01 | T03 | 15M | 45M |
+| C02 | T04 | 30M | 30M |
+| C02 | T05 | 10M | 40M |
+
+Business value: Phân tích hành vi chi tiêu và giá trị giao dịch tích lũy theo khách hàng.
+
+Lưu ý: Đây là tổng giá trị giao dịch, không phải số dư tài khoản thực tế. Muốn tính running balance cần phân biệt giao dịch ghi nợ, ghi có, phí và các bút toán liên quan.
+
+## Bài 20. Fraud Monitoring – Phát hiện giao dịch bất thường liên tiếp
+
+Business: Risk & Fraud Analytics Advanced
+
+Bối cảnh Business
+
+Risk Department muốn phát hiện các tài khoản có giao dịch tăng đột biến so với giao dịch ngay trước đó.
+
+Ví dụ: Một tài khoản thường giao dịch 1–2 triệu, đột nhiên phát sinh giao dịch 100 triệu.
+
+Yêu cầu SQL
+
+Sử dụng:
+
+- `LAG()` lấy số tiền giao dịch trước đó.
+- Tính tỷ lệ giao dịch hiện tại so với giao dịch trước.
+- Đánh dấu giao dịch có số tiền lớn hơn 5 lần giao dịch trước và lớn hơn 10 triệu VND.
+
+Input
+
+| account\_id | transaction\_id | transaction\_date | amount |
+| --- | --- | --- | --- |
+| A01 | T01 | 2026-01-01 | 1M |
+| A01 | T02 | 2026-01-02 | 2M |
+| A01 | T03 | 2026-01-03 | 20M |
+| A01 | T04 | 2026-01-04 | 3M |
+| A02 | T05 | 2026-01-01 | 5M |
+| A02 | T06 | 2026-01-02 | 50M |
+
+Expected Output
+
+| account\_id | transaction\_id | amount | previous\_amount | anomaly\_flag |
+| --- | --- | --- | --- | --- |
+| A01 | T01 | 1M | NULL | NO |
+| A01 | T02 | 2M | 1M | NO |
+| A01 | T03 | 20M | 2M | YES |
+| A01 | T04 | 3M | 20M | NO |
+| A02 | T05 | 5M | NULL | NO |
+| A02 | T06 | 50M | 5M | YES |
+
+Business value: Xây dựng lớp giám sát giao dịch bất thường để hỗ trợ hệ thống Fraud Detection.
+
+Lưu ý: Đây chỉ là rule-based alert để sàng lọc. Không thể kết luận gian lận chỉ từ việc số tiền tăng đột biến. Trong thực tế cần bổ sung tần suất, thời gian, thiết bị, địa điểm, lịch sử tài khoản và các yếu tố rủi ro khác.
+
+# Tổng hợp 20 bài tập theo Business Use Case
+
+| Bài | SQL Topic | Business Use Case | Độ khó |
+| --- | --- | --- | --- |
+| 1 | JOIN | Customer 360 | Basic |
+| 2 | JOIN | Branch Performance | Basic |
+| 3 | JOIN | Digital Banking Adoption | Intermediate |
+| 4 | JOIN | Employee Performance | Intermediate |
+| 5 | JOIN | Transaction Reconciliation | Advanced |
+| 6 | Aggregation | Monthly Transaction Report | Basic |
+| 7 | Aggregation | Top Customers by Balance | Basic |
+| 8 | Aggregation | Branch Transaction Performance | Intermediate |
+| 9 | Aggregation | Campaign Performance | Intermediate |
+| 10 | Aggregation | Mobile Banking Usage | Intermediate |
+| 11 | Subquery | Above-average Balance | Basic |
+| 12 | Subquery | Customers Without Transactions | Basic |
+| 13 | CTE | High-risk Customers | Intermediate |
+| 14 | CTE | Campaign Conversion | Advanced |
+| 15 | CTE | Inactive IB Users | Advanced |
+| 16 | Window | Top Customers per Branch | Intermediate |
+| 17 | Window | Latest Customer Interaction | Intermediate |
+| 18 | Window | Monthly Transaction Growth | Advanced |
+| 19 | Window | Running Transaction Total | Advanced |
+| 20 | Window | Transaction Anomaly Detection | Advanced |
+
+# Bonus – 5 bài toán Business thực tế nên làm thêm
+
+20 bài trên giúp bạn nắm được 4 chủ đề SQL. Nhưng nếu mục tiêu là làm dự án Banking Data Analytics thực tế, mình khuyên nên làm thêm 5 bài tích hợp nhiều kỹ thuật.
+
+| Bài | Business Problem | Bảng sử dụng | Kết quả mong muốn |
+| --- | --- | --- | --- |
+| 21 | Customer Churn Prediction Dataset | Customers, Accounts, Transactions, CRM | Danh sách khách hàng có dấu hiệu rời bỏ |
+| 22 | Customer Lifetime Value | Customers, Accounts, Transactions | Giá trị giao dịch và tài sản theo customer |
+| 23 | Digital Banking Funnel | IB Users, IB Sessions, Transfers, MB Devices, MB Sessions, QR Payments | Tỷ lệ đăng ký → đăng nhập → giao dịch |
+| 24 | Cross-selling Opportunity | Customers, Accounts, CRM Contacts | Khách hàng có khả năng mua thêm sản phẩm |
+| 25 | Suspicious Digital Transactions | Transactions, IB Sessions, MB Devices, MB Sessions, QR Payments | Danh sách giao dịch cần Risk kiểm tra |
+
+## Gợi ý kết quả đầu ra của 5 bài Bonus
+
+Bài 21 – Customer Churn
+
+| customer\_id | last\_transaction\_date | days\_inactive | total\_balance | churn\_segment |
+| --- | --- | --- | --- | --- |
+| C001 | 2026-08-01 | 92 | 50M | HIGH |
+| C002 | 2026-10-20 | 12 | 100M | LOW |
+
+Bài 22 – Customer Lifetime Value
+
+| customer\_id | total\_transactions | total\_transaction\_value | total\_balance |
+| --- | --- | --- | --- |
+| C001 | 120 | 500M | 100M |
+| C002 | 50 | 200M | 50M |
+
+Bài 23 – Digital Banking Funnel
+
+| stage | customers | conversion\_rate |
+| --- | --- | --- |
+| Registered | 10,000 | 100% |
+| Logged In | 8,000 | 80% |
+| Made Transfer | 5,000 | 50% |
+| Made QR Payment | 3,000 | 30% |
+
+Bài 24 – Cross-selling Opportunity
+
+| customer\_id | current\_products | total\_balance | suggested\_product |
+| --- | --- | --- | --- |
+| C001 | 1 | 500M | SAVINGS |
+| C002 | 2 | 200M | CREDIT\_CARD |
+
+Bài 25 – Suspicious Digital Transactions
+
+| transaction\_id | customer\_id | amount | is\_suspicious | reason |
+| --- | --- | --- | --- | --- |
+| T001 | C001 | 100M | YES | Unusual transaction amount |
+| T002 | C002 | 5M | NO | Normal transaction pattern |
+
+Đây là các output minh họa; logic phân loại cần được Business/Risk phê duyệt trước khi dùng thực tế.
+
+# Cách học và thực hành hiệu quả
+
+Mình đề xuất thực hiện theo thứ tự:
+
+1. Giai đoạn 1 – JOIN (Bài 1–5)
+   Tập trung vào INNER JOIN, LEFT JOIN, nhiều bảng JOIN, xử lý duplicate và xác định grain.
+2. Giai đoạn 2 – AGGREGATION (Bài 6–10)
+   Tập trung vào GROUP BY, HAVING, COUNT DISTINCT, SUM, AVG và KPI.
+3. Giai đoạn 3 – SUBQUERIES & CTE (Bài 11–15)
+   Tập trung vào EXISTS, NOT EXISTS, WITH, nhiều CTE và xử lý logic nhiều bước.
+4. Giai đoạn 4 – WINDOW FUNCTIONS (Bài 16–20)
+   Tập trung vào ROW\_NUMBER, RANK, LAG, SUM OVER và phân tích dữ liệu theo thời gian.
+5. Giai đoạn 5 – Business Case (Bài 21–25)
+   Kết hợp nhiều kỹ thuật để xây dựng một mini Banking Analytics Project.
+
+## Một lưu ý quan trọng khi làm bài
+
+Trong môi trường ngân hàng thực tế, SQL đúng cú pháp chưa đủ. Bạn cần chú ý 4 vấn đề:
+
+1. Grain: Một dòng dữ liệu đại diện cho cái gì? Customer, Account, Transaction hay Session?
+2. Duplicate: JOIN nhiều bảng quan hệ 1:N có thể làm nhân bản số tiền và số lượng.
+3. Business Definition: Ví dụ tổng số dư khác tổng giá trị giao dịch; số lần chuyển tiền khác số giao dịch hạch toán.
+4. Data Quality: Luôn xử lý NULL, duplicate, sai FK và dữ liệu không hợp lệ trước khi đưa KPI lên dashboard.
+
+Đặc biệt: Với Banking Data Platform này, hãy coi `core_transactions` là nguồn giao dịch chuẩn để đối soát, nhưng chỉ sau khi Data Owner xác nhận grain và quan hệ với các giao dịch từ IB/MB.
+
+Mình khuyên bạn dùng bộ 25 bài này như một SQL Banking Case Study thay vì học SQL rời rạc. Khi hoàn thành, bạn sẽ có kinh nghiệm thực hành gần với công việc Data Analyst/BI Analyst trong lĩnh vực ngân hàng.
+
+Nếu muốn triển khai thành bộ bài tập thực hành hoàn chỉnh, bước tiếp theo hợp lý nhất là xây dựng 20 bài tập thành file SQL thực thi trên PostgreSQL, bao gồm CREATE TABLE, INSERT dữ liệu mẫu, đề bài, expected output và test case để tự kiểm tra kết quả.

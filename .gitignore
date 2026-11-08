@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.py[cod]
 .venv/
 venv/
@@ -7,3 +7,9 @@ venv/
 .DS_Store
 .idea/
 .vscode/
+
+# Data files (avoid GitHub 100MB file size limit)
+*.csv
+*.parquet
+*.gz
+
