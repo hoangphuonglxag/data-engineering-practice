@@ -1,17 +1,35 @@
--- Bài 5: Transaction Reconciliation
+WITH mb_summary AS (
+    SELECT 
+        customer_id,
+        COUNT(device_id) AS device_count
+    FROM mb_devices
+    WHERE status = 'ACTIVE'
+    GROUP BY customer_id
+),
+ib_summary AS (
+    SELECT 
+        customer_id,
+        COUNT(ib_user_id) AS ib_count
+    FROM ib_users
+    WHERE status = 'ACTIVE'
+    GROUP BY customer_id
+)
 SELECT 
-    t.transfer_id,
-    t.reference_code,
-    t.amount AS ib_amount,
-    c.amount AS core_amount,
+    c.customer_id,
+    c.full_name,
     CASE 
-        WHEN c.transaction_id IS NULL THEN 'NOT_FOUND'
-        WHEN t.amount != c.amount THEN 'AMOUNT_MISMATCH'
-        WHEN t.status != c.status THEN 'STATUS_MISMATCH'
-        ELSE 'MATCHED'
-    END AS reconciliation_status
-FROM ib_transfers AS t
-LEFT JOIN core_transactions AS c 
-    ON t.reference_code = c.reference_code
-ORDER BY t.transfer_id
-LIMIT 15;
+        WHEN COALESCE(ib.ib_count, 0) > 0 THEN 'YES' 
+        ELSE 'NO' 
+    END AS has_ib,
+    CASE 
+        WHEN COALESCE(mb.device_count, 0) > 0 THEN 'YES' 
+        ELSE 'NO' 
+    END AS has_mb,
+    COALESCE(mb.device_count, 0) AS device_count
+FROM core_customers AS c
+LEFT JOIN ib_summary AS ib 
+    ON c.customer_id = ib.customer_id
+LEFT JOIN mb_summary AS mb 
+    ON c.customer_id = mb.customer_id
+ORDER BY c.customer_id
+LIMIT 10;
